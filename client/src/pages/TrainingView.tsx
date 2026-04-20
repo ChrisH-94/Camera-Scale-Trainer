@@ -28,24 +28,20 @@ export default function TrainingView({ onBack }: TrainingViewProps) {
   const [direction, setDirection] = useState<"ascending" | "descending">("ascending");
   const [showCalibration, setShowCalibration] = useState(false);
 
-  const handTracking = useHandTracking({
-    enabled: true,
-  });
-
   const scaleTraining = useScaleTraining({
     targetBPM: 120,
   });
 
-  const { recordSession, saveCalibration } = useUserProgress();
+  const handTracking = useHandTracking({
+    enabled: true,
+    onFingerPress: (finger, hand) => {
+      if (scaleTraining.isActive) {
+        scaleTraining.handleFingerPress(finger, hand);
+      }
+    },
+  });
 
-  // Handle finger press from hand tracking
-  useEffect(() => {
-    if (handTracking.detectedHands.length > 0 && scaleTraining.isActive) {
-      const hand = handTracking.detectedHands[0];
-      // This would integrate with actual finger detection logic
-      // For now, it's a placeholder for the real implementation
-    }
-  }, [handTracking.detectedHands, scaleTraining.isActive]);
+  const { recordSession, saveCalibration } = useUserProgress();
 
   const handleStartTraining = () => {
     if (!selectedScale) {
