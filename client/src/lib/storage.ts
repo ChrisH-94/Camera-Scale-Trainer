@@ -41,6 +41,8 @@ export function saveUserProgress(progress: UserProgress): void {
 export function loadCalibrationData(): {
   keyboardPlaneY: number;
   pressThreshold: number;
+  baselineTipY?: number[];
+  baselineCurl?: number[];
   calibrated: boolean;
 } | null {
   try {
@@ -61,6 +63,8 @@ export function loadCalibrationData(): {
 export function saveCalibrationData(data: {
   keyboardPlaneY: number;
   pressThreshold: number;
+  baselineTipY?: number[];
+  baselineCurl?: number[];
   calibrated: boolean;
 }): void {
   try {

@@ -32,6 +32,8 @@ export interface FingerPress {
 export interface CalibrationData {
   keyboardPlaneY: number; // Y-coordinate of the keyboard surface
   pressThreshold: number; // How far down to trigger a press
+  baselineTipY: number[]; // Neutral tip Y per finger at calibration time
+  baselineCurl: number[]; // Neutral tip-vs-PIP depth per finger
   calibrated: boolean;
 }
 
@@ -152,16 +154,33 @@ export function calibrateKeyboardPlane(
     return {
       keyboardPlaneY: 0.7, // Default fallback
       pressThreshold: 0.05,
+      baselineTipY: [0, 0, 0, 0, 0],
+      baselineCurl: [0, 0, 0, 0, 0],
       calibrated: false,
     };
   }
 
   // Average Y position of fingertips = keyboard plane
   const avgY = fingerTips.reduce((sum, tip) => sum + tip.y, 0) / fingerTips.length;
+  const baselineTipY: number[] = [];
+  const baselineCurl: number[] = [];
+
+  for (let finger = 1; finger <= 5; finger++) {
+    const tipIndex = Object.values(FINGER_TIPS)[finger - 1];
+    const pipIndex = Object.values(FINGER_PIPS)[finger - 1];
+
+    const tip = landmarks[tipIndex];
+    const pip = landmarks[pipIndex];
+
+    baselineTipY.push(tip?.y ?? avgY);
+    baselineCurl.push(tip && pip ? tip.y - pip.y : 0);
+  }
 
   return {
     keyboardPlaneY: avgY,
     pressThreshold: 0.08, // Allow 8% of frame height for pressing
+    baselineTipY,
+    baselineCurl,
     calibrated: true,
   };
 }
@@ -211,29 +230,59 @@ export function getActiveFinger(
     return null;
   }
 
-  let lowestFinger: { finger: number; y: number } | null = null;
+  let best: { finger: number; score: number } | null = null;
+  let runnerUpScore = -Infinity;
 
-  // Find the finger with the lowest Y value (closest to keyboard plane)
+  // Pick the finger with the strongest calibrated "press" score.
   for (let finger = 1; finger <= 5; finger++) {
     const tipIndex = Object.values(FINGER_TIPS)[finger - 1];
+    const pipIndex = Object.values(FINGER_PIPS)[finger - 1];
+
     const tip = landmarks[tipIndex];
+    const pip = landmarks[pipIndex];
 
-    if (!tip) continue;
+    if (!tip || !pip) continue;
 
-    if (!lowestFinger || tip.y > lowestFinger.y) {
-      lowestFinger = { finger, y: tip.y };
+    const baselineTip = calibration.baselineTipY[finger - 1] ?? calibration.keyboardPlaneY;
+    const baselineCurl = calibration.baselineCurl[finger - 1] ?? 0;
+
+    // Positive when tip moved down from neutral (screen Y increases downward).
+    const tipDrop = tip.y - baselineTip;
+    // Positive when finger curls downward vs neutral shape.
+    const curlDelta = tip.y - pip.y - baselineCurl;
+
+    const score = tipDrop * 0.7 + curlDelta * 0.3;
+
+    const nearKeyboardPlane = tip.y >= calibration.keyboardPlaneY - calibration.pressThreshold;
+    if (!nearKeyboardPlane) continue;
+
+    if (!best || score > best.score) {
+      if (best) {
+        runnerUpScore = Math.max(runnerUpScore, best.score);
+      }
+      best = { finger, score };
+    } else {
+      runnerUpScore = Math.max(runnerUpScore, score);
     }
   }
 
-  // Only return if finger is close to keyboard plane
-  if (
-    lowestFinger &&
-    lowestFinger.y >= calibration.keyboardPlaneY - calibration.pressThreshold
-  ) {
-    return lowestFinger.finger;
+  // Require minimum certainty and separation to reduce random mislabels.
+  if (!best) {
+    return null;
   }
 
-  return null;
+  const minPressScore = 0.015;
+  const minSeparation = 0.006;
+
+  if (best.score < minPressScore) {
+    return null;
+  }
+
+  if (runnerUpScore !== -Infinity && best.score - runnerUpScore < minSeparation) {
+    return null;
+  }
+
+  return best.finger;
 }
 
 /**

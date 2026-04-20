@@ -94,8 +94,10 @@ export function validateFinger(
     confidence,
   });
 
-  // Add to detected sequence
-  progress.detectedSequence.push(detectedFinger);
+  // Only advance the sequence when the correct finger was played.
+  if (isCorrect) {
+    progress.detectedSequence.push(detectedFinger);
+  }
 
   // Check if scale is complete
   if (progress.detectedSequence.length === progress.expectedSequence.length) {
@@ -151,18 +153,16 @@ export function calculateTimingAccuracy(
  * Update overall accuracy metrics for the scale
  */
 export function updateScaleAccuracy(progress: ScaleProgress): void {
-  if (progress.detectedSequence.length === 0) {
+  if (progress.expectedSequence.length === 0) {
     progress.accuracy = 0;
     progress.timingAccuracy = 0;
     return;
   }
 
-  // Fingering accuracy: percentage of correct fingers
-  const correctFingers = progress.detectedSequence.filter(
-    (finger, i) => finger === progress.expectedSequence[i]
-  ).length;
-
-  progress.accuracy = (correctFingers / progress.expectedSequence.length) * 100;
+  // Fingering accuracy: correct notes out of all attempts (correct + wrong).
+  const correctFingers = progress.detectedSequence.length;
+  const totalAttempts = correctFingers + progress.totalErrors;
+  progress.accuracy = totalAttempts > 0 ? (correctFingers / totalAttempts) * 100 : 0;
 
   // Timing accuracy: average of all timing accuracies
   const timingAccuracies = progress.fingerEvents.map((event, i) => {
