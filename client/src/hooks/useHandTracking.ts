@@ -60,13 +60,13 @@ export function useHandTracking(options: UseHandTrackingOptions = {}) {
   });
 
   const handsRef = useRef<any>(null);
-  const cameraRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previousLandmarksRef = useRef<any>(null);
   const previousFingerRef = useRef<number | null>(null);
   const frameCountRef = useRef(0);
+  const animationFrameRef = useRef<number | null>(null);
 
   const setVideoNodeRef = useCallback((node: HTMLVideoElement | null) => {
     videoRef.current = node;
@@ -85,15 +85,11 @@ export function useHandTracking(options: UseHandTrackingOptions = {}) {
         const hands = await initializeMediaPipe();
         handsRef.current = hands;
 
-        // Load Camera Utils
-        // @ts-ignore
-        if (window.Camera) {
-          setState((prev) => ({
-            ...prev,
-            isInitialized: true,
-            isLoading: false,
-          }));
-        }
+        setState((prev) => ({
+          ...prev,
+          isInitialized: true,
+          isLoading: false,
+        }));
       } catch (error) {
         console.error("Failed to initialize MediaPipe:", error);
         setState((prev) => ({
@@ -111,6 +107,8 @@ export function useHandTracking(options: UseHandTrackingOptions = {}) {
   useEffect(() => {
     if (!state.isInitialized || !videoElement || !enabled) return;
 
+    let stopped = false;
+
     const startCamera = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -122,26 +120,34 @@ export function useHandTracking(options: UseHandTrackingOptions = {}) {
         });
 
         videoElement.srcObject = stream;
+        await videoElement.play().catch(() => undefined);
 
-        // Set up MediaPipe camera
-        // @ts-ignore
-        const Camera = window.Camera;
-        if (Camera) {
-          cameraRef.current = new Camera(videoElement, {
-            onFrame: async () => {
-              if (handsRef.current && videoRef.current) {
-                await handsRef.current.send({ image: videoRef.current });
-              }
-            },
-            width: 640,
-            height: 480,
-          });
+        const processFrame = async () => {
+          if (stopped) return;
 
-          // Set up results handler
-          handsRef.current.onResults(onResults);
+          if (!handsRef.current || !videoRef.current) {
+            if (!stopped) {
+              animationFrameRef.current = requestAnimationFrame(() => {
+                void processFrame();
+              });
+            }
+            return;
+          }
 
-          cameraRef.current.start();
-        }
+          if (videoRef.current.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+            await handsRef.current.send({ image: videoRef.current });
+          }
+
+          if (!stopped) {
+            animationFrameRef.current = requestAnimationFrame(() => {
+              void processFrame();
+            });
+          }
+        };
+
+        animationFrameRef.current = requestAnimationFrame(() => {
+          void processFrame();
+        });
       } catch (error) {
         console.error("Failed to start camera:", error);
         setState((prev) => ({
@@ -154,8 +160,11 @@ export function useHandTracking(options: UseHandTrackingOptions = {}) {
     startCamera();
 
     return () => {
-      if (cameraRef.current) {
-        cameraRef.current.stop();
+      stopped = true;
+
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
 
       const stream = videoElement.srcObject as MediaStream | null;
@@ -240,6 +249,12 @@ export function useHandTracking(options: UseHandTrackingOptions = {}) {
     },
     [state.isCalibrated, state.calibration, onHandDetected, onFingerPress]
   );
+
+  // Keep MediaPipe result callback synced with latest React state.
+  useEffect(() => {
+    if (!handsRef.current) return;
+    handsRef.current.onResults(onResults);
+  }, [onResults]);
 
   // Calibrate keyboard plane
   const calibrate = useCallback(() => {
