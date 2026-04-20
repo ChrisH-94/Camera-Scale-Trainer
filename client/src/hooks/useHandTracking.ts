@@ -126,7 +126,7 @@ export function useHandTracking(options: UseHandTrackingOptions = {}) {
         if (Camera) {
           cameraRef.current = new Camera(videoElement, {
             onFrame: async () => {
-              if (handsRef.current && videoRef.current && canvasRef.current) {
+              if (handsRef.current && videoRef.current) {
                 await handsRef.current.send({ image: videoRef.current });
               }
             },

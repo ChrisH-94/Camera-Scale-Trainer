@@ -64,17 +64,30 @@ export default function TrainingView({ onBack }: TrainingViewProps) {
 
   const handleCalibrate = () => {
     handTracking.calibrate();
-    if (handTracking.isCalibrated && handTracking.calibration) {
-      saveCalibration(handTracking.calibration);
-      setShowCalibration(false);
-
-      // Start training after calibration
-      const scale = SCALE_LIBRARY.find((s) => s.id === selectedScale);
-      if (scale) {
-        scaleTraining.startScale(scale, direction);
-      }
-    }
   };
+
+  useEffect(() => {
+    if (!showCalibration || !handTracking.isCalibrated || !handTracking.calibration) {
+      return;
+    }
+
+    saveCalibration(handTracking.calibration);
+    setShowCalibration(false);
+
+    // Start training after calibration
+    const scale = SCALE_LIBRARY.find((s) => s.id === selectedScale);
+    if (scale) {
+      scaleTraining.startScale(scale, direction);
+    }
+  }, [
+    showCalibration,
+    handTracking.isCalibrated,
+    handTracking.calibration,
+    saveCalibration,
+    selectedScale,
+    direction,
+    scaleTraining,
+  ]);
 
   // If training is active, show the training interface
   if (scaleTraining.isActive && scaleTraining.progress) {
