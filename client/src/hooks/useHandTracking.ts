@@ -62,10 +62,16 @@ export function useHandTracking(options: UseHandTrackingOptions = {}) {
   const handsRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previousLandmarksRef = useRef<any>(null);
   const previousFingerRef = useRef<number | null>(null);
   const frameCountRef = useRef(0);
+
+  const setVideoNodeRef = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    setVideoElement(node);
+  }, []);
 
   // Initialize MediaPipe
   useEffect(() => {
@@ -103,7 +109,7 @@ export function useHandTracking(options: UseHandTrackingOptions = {}) {
 
   // Start camera and detection
   useEffect(() => {
-    if (!state.isInitialized || !videoRef.current || !enabled) return;
+    if (!state.isInitialized || !videoElement || !enabled) return;
 
     const startCamera = async () => {
       try {
@@ -112,13 +118,13 @@ export function useHandTracking(options: UseHandTrackingOptions = {}) {
           audio: false,
         });
 
-        videoRef.current!.srcObject = stream;
+        videoElement.srcObject = stream;
 
         // Set up MediaPipe camera
         // @ts-ignore
         const Camera = window.Camera;
         if (Camera) {
-          cameraRef.current = new Camera(videoRef.current, {
+          cameraRef.current = new Camera(videoElement, {
             onFrame: async () => {
               if (handsRef.current && videoRef.current && canvasRef.current) {
                 await handsRef.current.send({ image: videoRef.current });
@@ -148,8 +154,15 @@ export function useHandTracking(options: UseHandTrackingOptions = {}) {
       if (cameraRef.current) {
         cameraRef.current.stop();
       }
+
+      const stream = videoElement.srcObject as MediaStream | null;
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+
+      videoElement.srcObject = null;
     };
-  }, [state.isInitialized, enabled]);
+  }, [state.isInitialized, videoElement, enabled]);
 
   // Process MediaPipe results
   const onResults = useCallback(
@@ -262,6 +275,7 @@ export function useHandTracking(options: UseHandTrackingOptions = {}) {
 
   return {
     videoRef,
+    setVideoRef: setVideoNodeRef,
     canvasRef,
     ...state,
     calibrate,

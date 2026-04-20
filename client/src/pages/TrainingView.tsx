@@ -85,7 +85,7 @@ export default function TrainingView({ onBack }: TrainingViewProps) {
         {/* Video Feed */}
         <div className="flex-1 relative bg-black overflow-hidden">
           <video
-            ref={handTracking.videoRef}
+            ref={handTracking.setVideoRef}
             className="w-full h-full object-cover"
             autoPlay
             playsInline
@@ -214,7 +214,7 @@ export default function TrainingView({ onBack }: TrainingViewProps) {
       <div className="min-h-screen bg-gray-900 flex flex-col">
         <div className="flex-1 relative bg-black overflow-hidden">
           <video
-            ref={handTracking.videoRef}
+            ref={handTracking.setVideoRef}
             className="w-full h-full object-cover"
             autoPlay
             playsInline
