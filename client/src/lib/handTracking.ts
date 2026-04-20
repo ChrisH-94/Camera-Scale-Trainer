@@ -66,26 +66,33 @@ export async function initializeMediaPipe(): Promise<any> {
   handsScript.src = "https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js";
   document.head.appendChild(handsScript);
 
-  return new Promise((resolve) => {
-    handsScript.onload = () => {
-      // @ts-ignore
-      const Hands = window.Hands;
-      const hands = new Hands({
-        locateFile: (file: string) => {
-          return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-        },
-      });
-
-      hands.setOptions({
-        maxNumHands: 2,
-        modelComplexity: 1,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5,
-      });
-
-      resolve(hands);
-    };
+  await new Promise<void>((resolve, reject) => {
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Failed to load MediaPipe camera_utils"));
   });
+
+  await new Promise<void>((resolve, reject) => {
+    handsScript.onload = () => resolve();
+    handsScript.onerror = () => reject(new Error("Failed to load MediaPipe hands"));
+  });
+
+  // @ts-ignore
+  const Hands = window.Hands;
+  const hands = new Hands({
+    locateFile: (file: string) => {
+      return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+    },
+  });
+
+  hands.setOptions({
+    maxNumHands: 2,
+    modelComplexity: 1,
+    // Slightly lower thresholds to improve first detection on external/mobile cameras.
+    minDetectionConfidence: 0.35,
+    minTrackingConfidence: 0.35,
+  });
+
+  return hands;
 }
 
 /**
@@ -164,14 +171,18 @@ export function calibrateKeyboardPlane(
  */
 export function extractHands(results: any): Hand[] {
   const hands: Hand[] = [];
+  const multiHandLandmarks = results?.multiHandLandmarks ?? [];
+  const multiHandedness = results?.multiHandedness ?? [];
 
-  if (!results.multiHandLandmarks || !results.multiHandedness) {
+  if (multiHandLandmarks.length === 0) {
     return hands;
   }
 
-  for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-    const landmarks = results.multiHandLandmarks[i];
-    const handedness = results.multiHandedness[i];
+  for (let i = 0; i < multiHandLandmarks.length; i++) {
+    const landmarks = multiHandLandmarks[i];
+    const handedness = multiHandedness[i];
+    const label = handedness?.label === "Left" ? "Left" : "Right";
+    const score = typeof handedness?.score === "number" ? handedness.score : 1;
 
     hands.push({
       landmarks: landmarks.map((landmark: any) => ({
@@ -180,8 +191,8 @@ export function extractHands(results: any): Hand[] {
         z: landmark.z,
         visibility: landmark.visibility,
       })),
-      handedness: handedness.label,
-      confidence: handedness.score,
+      handedness: label,
+      confidence: score,
     });
   }
 
