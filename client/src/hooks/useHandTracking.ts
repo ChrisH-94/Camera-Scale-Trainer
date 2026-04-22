@@ -67,6 +67,10 @@ export function useHandTracking(options: UseHandTrackingOptions = {}) {
   const previousFingerRef = useRef<number | null>(null);
   const frameCountRef = useRef(0);
   const animationFrameRef = useRef<number | null>(null);
+  const stableFingerCandidateRef = useRef<number | null>(null);
+  const stableFingerFrameCountRef = useRef(0);
+  const pressLatchedRef = useRef(false);
+  const releaseFrameCountRef = useRef(0);
 
   const setVideoNodeRef = useCallback((node: HTMLVideoElement | null) => {
     videoRef.current = node;
@@ -226,16 +230,43 @@ export function useHandTracking(options: UseHandTrackingOptions = {}) {
         if (state.isCalibrated && state.calibration) {
           const activeFinger = getActiveFinger(smoothed, state.calibration);
 
-          if (activeFinger && activeFinger !== previousFingerRef.current) {
-            previousFingerRef.current = activeFinger;
+          if (!activeFinger) {
+            stableFingerCandidateRef.current = null;
+            stableFingerFrameCountRef.current = 0;
+            releaseFrameCountRef.current += 1;
 
-            // Callback for finger press
-            if (onFingerPress) {
-              const handType = hand.handedness === "Right" ? "right" : "left";
-              onFingerPress(activeFinger, handType);
+            // Require a brief release window before unlocking the next note.
+            if (releaseFrameCountRef.current >= 2) {
+              pressLatchedRef.current = false;
+              previousFingerRef.current = null;
             }
-          } else if (!activeFinger) {
-            previousFingerRef.current = null;
+          } else {
+            releaseFrameCountRef.current = 0;
+
+            if (stableFingerCandidateRef.current === activeFinger) {
+              stableFingerFrameCountRef.current += 1;
+            } else {
+              stableFingerCandidateRef.current = activeFinger;
+              stableFingerFrameCountRef.current = 1;
+            }
+
+            // Require the same finger across consecutive frames to reduce jitter.
+            const isStablePress = stableFingerFrameCountRef.current >= 3;
+
+            if (
+              isStablePress &&
+              !pressLatchedRef.current &&
+              activeFinger !== previousFingerRef.current
+            ) {
+              previousFingerRef.current = activeFinger;
+              pressLatchedRef.current = true;
+
+              // Callback for finger press
+              if (onFingerPress) {
+                const handType = hand.handedness === "Right" ? "right" : "left";
+                onFingerPress(activeFinger, handType);
+              }
+            }
           }
         }
       }
@@ -289,6 +320,10 @@ export function useHandTracking(options: UseHandTrackingOptions = {}) {
       calibration: null,
     }));
     previousFingerRef.current = null;
+    stableFingerCandidateRef.current = null;
+    stableFingerFrameCountRef.current = 0;
+    pressLatchedRef.current = false;
+    releaseFrameCountRef.current = 0;
   }, []);
 
   return {
